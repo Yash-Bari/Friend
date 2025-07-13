@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumi - Your AI Friend</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .chat-container {
+            height: calc(100vh - 200px);
+        }
+        .messages {
+            height: calc(100% - 100px);
+            overflow-y: auto;
+        }
+        .typing-indicator::after {
+            content: '...';
+            animation: typing 1.5s infinite;
+            display: inline-block;
+            width: 20px;
+            text-align: left;
+        }
+        @keyframes typing {
+            0% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="{{ url_for('chat.index') }}" class="text-xl font-bold text-indigo-600">Lumi</a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="{{ url_for('profile.profile') }}" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">
+                        <i class="fas fa-user mr-1"></i> Profile
+                    </a>
+                    <a href="{{ url_for('daily.daily') }}" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">
+                        <i class="fas fa-calendar-day mr-1"></i> Daily Plan
+                    </a>
+                    <a href="{{ url_for('chat.chat') }}" class="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-full text-sm font-medium hover:bg-indigo-200">
+                        <i class="fas fa-comment-dots mr-1"></i> Chat
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-4 rounded-md {% if category == 'error' %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-white border-t border-gray-200 mt-8">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <p class="text-center text-gray-500 text-sm">
+                &copy; {{ now.year }} Lumi AI. All rights reserved.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Set current year for footer
+        document.addEventListener('DOMContentLoaded', function() {
+            const now = new Date();
+            const yearElements = document.querySelectorAll('[data-year]');
+            yearElements.forEach(el => {
+                el.textContent = now.getFullYear();
+            });
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

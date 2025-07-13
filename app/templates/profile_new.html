@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6 bg-indigo-50 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-800">Your Profile</h2>
+            <p class="mt-1 text-sm text-gray-500">Help me get to know you better.</p>
+        </div>
+        
+        <form id="profile-form" method="POST" class="px-4 py-5 sm:p-6">
+            {% if error %}
+                <div class="rounded-md bg-red-50 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">{{ error }}</h3>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+            
+            <div class="space-y-6">
+                {% for i in range(questions|length) %}
+                    <div class="space-y-2">
+                        <label for="q{{ i+1 }}" class="block text-sm font-medium text-gray-700">
+                            {{ questions[i] }}
+                        </label>
+                        <div class="mt-1">
+                            <textarea 
+                                id="q{{ i+1 }}" 
+                                name="q{{ i+1 }}" 
+                                rows="3" 
+                                class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md p-3"
+                                placeholder="Your answer..."
+                                {% if loop.first %}required{% endif %}
+                            >{{ existing_answers.get('q' ~ (i+1), '') }}</textarea>
+                        </div>
+                    </div>
+                {% endfor %}
+                
+                <div class="flex justify-end pt-4">
+                    <button 
+                        type="submit" 
+                        class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        {{ 'Update' if profile else 'Save' }} Profile
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <div class="mt-8 text-center">
+        <p class="text-sm text-gray-500">
+            Your information helps me provide better, more personalized support.
+        </p>
+    </div>
+</div>
+
+<script>
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const form = e.target;
+    const formData = new FormData(form);
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalButtonText = submitButton.innerHTML;
+    
+    try {
+        // Show loading state
+        submitButton.disabled = true;
+        submitButton.innerHTML = `
+            <svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Processing...
+        `;
+        
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        if (response.redirected) {
+            // If the response is a redirect, follow it
+            window.location.href = response.url;
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Redirect on success
+            window.location.href = "{{ url_for('daily.daily') }}";
+        } else {
+            // Show error message
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'rounded-md bg-red-50 p-4 mb-4';
+            errorDiv.innerHTML = `
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800">${result.error || 'An error occurred. Please try again.'}</h3>
+                    </div>
+                </div>
+            `;
+            
+            // Remove any existing error messages
+            const existingError = form.querySelector('.bg-red-50');
+            if (existingError) {
+                existingError.remove();
+            }
+            
+            // Insert the error message before the form
+            form.insertBefore(errorDiv, form.firstChild);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    } finally {
+        // Reset button state
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonText;
+    }
+});
+</script>
+{% endblock %}

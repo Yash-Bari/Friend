@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6 bg-indigo-50 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-800">Daily Planning</h2>
+            <p class="mt-1 text-sm text-gray-500">Set your intentions for today.</p>
+        </div>
+        
+        <form id="daily-form" method="POST" class="px-4 py-5 sm:p-6">
+            <div class="space-y-8">
+                <!-- Tasks Section -->
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900 mb-3">Your Top 3 Tasks</h3>
+                    <p class="text-sm text-gray-500 mb-4">What are the most important things you want to accomplish today?</p>
+                    
+                    <div id="tasks-container" class="space-y-3">
+                        {% for i in range(3) %}
+                            <div class="flex items-center">
+                                <span class="text-gray-500 mr-3 w-5">{{ i + 1 }}.</span>
+                                <input 
+                                    type="text" 
+                                    name="tasks[]" 
+                                    value="{{ today_plan.tasks[i] if today_plan and today_plan.tasks|length > i else '' }}" 
+                                    class="flex-1 border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    placeholder="Task {{ i + 1 }}"
+                                >
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Mood Section -->
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900 mb-3">How are you feeling today?</h3>
+                    <p class="text-sm text-gray-500 mb-4">Your mood helps me understand you better and provide more relevant support.</p>
+                    
+                    <div class="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                        {% set moods = [
+                            {'emoji': '😊', 'label': 'Great', 'value': 'great'},
+                            {'emoji': '🙂', 'label': 'Good', 'value': 'good'},
+                            {'emoji': '😐', 'label': 'Neutral', 'value': 'neutral'},
+                            {'emoji': '😕', 'label': 'Meh', 'value': 'meh'},
+                            {'emoji': '😞', 'label': 'Not Great', 'value': 'not_great'}
+                        ] %}
+                        
+                        {% for mood in moods %}
+                            <label class="relative block cursor-pointer">
+                                <input 
+                                    type="radio" 
+                                    name="mood" 
+                                    value="{{ mood.value }}" 
+                                    class="peer sr-only"
+                                    {% if today_plan and today_plan.mood == mood.value %}checked{% endif %}
+                                    required
+                                >
+                                <div class="p-3 border-2 border-gray-200 rounded-lg text-center hover:bg-gray-50 peer-checked:border-indigo-500 peer-checked:bg-indigo-50">
+                                    <div class="text-3xl mb-1">{{ mood.emoji }}</div>
+                                    <div class="text-sm font-medium text-gray-700">{{ mood.label }}</div>
+                                </div>
+                                <div class="hidden absolute -top-2 -right-2 w-5 h-5 bg-indigo-600 rounded-full items-center justify-center text-white text-xs peer-checked:flex">
+                                    ✓
+                                </div>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mt-4">
+                        <label for="mood-note" class="block text-sm font-medium text-gray-700 mb-1">
+                            Any notes about how you're feeling? (Optional)
+                        </label>
+                        <textarea 
+                            id="mood-note" 
+                            name="mood_note" 
+                            rows="2" 
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md p-2"
+                            placeholder="I'm feeling..."
+                        >{% if today_plan %}{{ today_plan.mood_note or '' }}{% endif %}</textarea>
+                    </div>
+                </div>
+                
+                <div class="pt-4 border-t border-gray-200">
+                    <div class="flex justify-end">
+                        <button 
+                            type="submit" 
+                            class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        >
+                            Save & Continue to Chat
+                            <i class="fas fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <div class="mt-6 text-center">
+        <p class="text-sm text-gray-500">
+            You can update your daily plan anytime from the menu.
+        </p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('daily-form');
+    
+    form.addEventListener('submit', function(e) {
+        // Client-side validation
+        const taskInputs = form.querySelectorAll('input[name^="tasks"]');
+        let hasTask = false;
+        
+        taskInputs.forEach(input => {
+            if (input.value.trim()) {
+                hasTask = true;
+            }
+        });
+        
+        if (!hasTask) {
+            e.preventDefault();
+            alert('Please add at least one task for today.');
+            return;
+        }
+        
+        if (!form.mood.value) {
+            e.preventDefault();
+            alert('Please select how you\'re feeling today.');
+            return;
+        }
+    });
+    
+    // Add visual feedback for mood selection
+    const moodInputs = form.querySelectorAll('input[name="mood"]');
+    moodInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            // Remove all checked states
+            moodInputs.forEach(i => {
+                const label = i.closest('label');
+                if (label) {
+                    label.querySelector('div:first-child').classList.remove('ring-2', 'ring-indigo-500');
+                }
+            });
+            
+            // Add checked state to selected
+            if (this.checked) {
+                const label = this.closest('label');
+                if (label) {
+                    label.querySelector('div:first-child').classList.add('ring-2', 'ring-indigo-500');
+                }
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

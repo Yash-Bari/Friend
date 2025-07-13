@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+    /* Custom scrollbar */
+    .messages::-webkit-scrollbar {
+        width: 6px;
+    }
+    .messages::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    .messages::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+    }
+    .messages::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <!-- Chat header -->
+    <div class="bg-indigo-600 text-white p-4">
+        <div class="flex items-center">
+            <div class="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-xl font-bold">L</div>
+            <div class="ml-3">
+                <h2 class="text-lg font-semibold">Lumi</h2>
+                <p class="text-indigo-100 text-sm">Your AI Companion</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Messages container -->
+    <div class="chat-container flex flex-col p-4">
+        <div id="messages" class="messages space-y-4 mb-4">
+            <!-- Messages will be loaded here by JavaScript -->
+        </div>
+        
+        <!-- Typing indicator (hidden by default) -->
+        <div id="typing-indicator" class="hidden mb-4 ml-2">
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="ml-2 bg-gray-100 rounded-lg px-4 py-2 text-gray-700">
+                    <span class="typing-indicator"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Message input -->
+        <div class="mt-auto">
+            <form id="message-form" class="flex space-x-2">
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    placeholder="Type your message..." 
+                    class="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    autocomplete="off"
+                >
+                <button 
+                    type="submit" 
+                    class="bg-indigo-600 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Load chat history and initialize the chat -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const messagesContainer = document.getElementById('messages');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const typingIndicator = document.getElementById('typing-indicator');
+        
+        // Function to add a message to the chat
+        function addMessage(role, content, timestamp = null) {
+            const messageDiv = document.createElement('div');
+            const time = timestamp ? new Date(timestamp) : new Date();
+            const timeString = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            // Format message based on role (user or assistant)
+            if (role === 'user') {
+                messageDiv.innerHTML = `
+                    <div class="flex justify-end mb-2">
+                        <div class="max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl bg-indigo-100 text-gray-800 rounded-2xl px-4 py-2">
+                            <p class="text-sm">${content}</p>
+                            <p class="text-xs text-gray-500 text-right mt-1">${timeString}</p>
+                        </div>
+                        <div class="ml-2 w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center">
+                            <i class="fas fa-user"></i>
+                        </div>
+                    </div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="flex mb-2">
+                        <div class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="ml-2 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl bg-gray-100 text-gray-800 rounded-2xl px-4 py-2">
+                            <p class="text-sm">${content}</p>
+                            <p class="text-xs text-gray-500 text-right mt-1">${timeString}</p>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Function to load chat history
+        async function loadChatHistory() {
+            try {
+                const response = await fetch('/api/chat/history');
+                if (!response.ok) throw new Error('Failed to load chat history');
+                
+                const messages = await response.json();
+                messagesContainer.innerHTML = ''; // Clear loading state if any
+                
+                messages.reverse().forEach(msg => {
+                    addMessage(msg.role, msg.content, msg.timestamp);
+                });
+                
+                // If no messages, add a welcome message
+                if (messages.length === 0) {
+                    addMessage('assistant', 'Hello! I\'m Lumi, your AI companion. How can I help you today?');
+                }
+                
+            } catch (error) {
+                console.error('Error loading chat history:', error);
+                addMessage('assistant', 'Welcome! I\'m Lumi, your AI companion. How can I help you today?');
+            }
+        }
+        
+        // Handle form submission
+        messageForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to UI
+            addMessage('user', message);
+            messageInput.value = '';
+            
+            // Show typing indicator
+            typingIndicator.classList.remove('hidden');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            try {
+                // Send message to server
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message })
+                });
+                
+                if (!response.ok) throw new Error('Failed to send message');
+                
+                const data = await response.json();
+                
+                // Hide typing indicator and add response
+                typingIndicator.classList.add('hidden');
+                addMessage('assistant', data.response, data.timestamp);
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                typingIndicator.classList.add('hidden');
+                addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+            }
+        });
+        
+        // Allow Shift+Enter for new line, Enter to send
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                messageForm.dispatchEvent(new Event('submit'));
+            }
+        });
+        
+        // Load initial chat history
+        loadChatHistory();
+    });
+</script>
+{% endblock %}
