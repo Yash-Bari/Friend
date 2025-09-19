@@ -157,20 +157,9 @@ def get_context(user_id: str, recent_messages: List[Dict] = None) -> Dict[str, s
     
     return context
 
-def generate_response(user_id: str, message: str, chat_history: List[Dict] = None) -> Tuple[str, bool]:
+def generate_response(user_id: str, message: str, chat_history: List[Dict] = None) -> str:
     """
-    Generate a personalized response to the user's message using Google Gemini.
-    
-    Args:
-        user_id: The user's unique identifier
-        message: The user's message
-        chat_history: List of previous messages in the conversation
-        
-    Returns:
-        tuple: (response_text: str, is_proactive: bool) - The generated response and whether it was proactive
-    """
-    """
-    Generate a personalized response to the user's message using Google Gemini.
+    Generate a personalized response to the user's message with fallback mechanisms.
     
     Args:
         user_id: The user's unique identifier
@@ -187,84 +176,115 @@ def generate_response(user_id: str, message: str, chat_history: List[Dict] = Non
         # Check if we should initiate a proactive conversation
         proactive_response = check_proactive_engagement(user_id, context)
         if proactive_response and (not message.strip() or len(message.strip()) < 3):
-            return proactive_response, True  # Return proactive response if no real message from user
+            return proactive_response
             
-        # Format the system prompt with context
-        system_prompt = SYSTEM_PROMPT.format(
-            profile_info=context.get('profile_info', 'No profile information available.'),
-            daily_plan=context.get('daily_plan', 'No plans for today.'),
-            memories=context.get('memories', 'No relevant memories found.'),
-            chat_history=context.get('chat_history', 'No recent conversation history.'),
-            current_time=context.get('current_time', datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'))
-        )
-        
-        # Prepare the conversation history for Gemini
-        conversation = [{"role": "user", "parts": [system_prompt]}]
-        
-        # Add chat history if available
-        if chat_history:
-            for msg in chat_history[-5:]:  # Limit to last 5 messages for context
-                role = "user" if msg.get("role") == "user" else "model"
-                content = msg.get("content", "").strip()
-                if content:
-                    conversation.append({"role": role, "parts": [content]})
-        
-        # Add the current user message
-        conversation.append({"role": "user", "parts": [message]})
-        
-        # Generate response
-        response = model.generate_content(
-            conversation,
-            generation_config=GENERATION_CONFIG,
-            safety_settings=SAFETY_SETTINGS
-        )
-        
-        # Extract and clean the response text
-        response_text = ""
-        if response and hasattr(response, 'text'):
-            response_text = response.text.strip()
-        elif response and hasattr(response, 'candidates'):
-            # Handle response format for some Gemini models
-            for candidate in response.candidates:
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    response_text = ' '.join(part.text for part in candidate.content.parts if hasattr(part, 'text')).strip()
-        
-        # If we couldn't get a response, provide a fallback
-        if not response_text:
-            return "I'm not sure how to respond to that. Could you rephrase or ask something else?", False
-            
-        # Extract and save any important information from the conversation
+        # Try to use Gemini API first
         try:
-            # Check if the user shared personal information
-            if any(phrase in message.lower() for phrase in ['my name is', "i'm ", "i am ", "i'm from", "i live in"]):
-                # Extract and save personal details
-                UserProfile.add_memory(
-                    user_id=user_id,
-                    memory_type='personal_info',
-                    content=f"User mentioned: {message}",
-                    importance=5,
-                    tags=['personal_info']
-                )
-                
-                # Make the response more personal
-                response_text = personality.get_style('supportive', 
-                    f"Thanks for sharing that with me! I'll remember that {message.split(' ')[0]}. "
-                    "It's great to get to know you better!"
-                )
-                
-        except Exception as e:
-            current_app.logger.error(f"Error saving memory: {str(e)}")
+            response_text = _generate_gemini_response(user_id, message, context, chat_history)
+            if response_text:
+                return response_text
+        except Exception as api_error:
+            current_app.logger.warning(f"Gemini API failed, using fallback: {str(api_error)}")
         
-        # Add personality to the response
-        if not message.strip() or len(message.strip()) < 3:
-            # If it's a very short message, be more proactive
-            response_text = personality.get_style('motivational', response_text)
-        
-        return response_text, False  # Not a proactive message
+        # Fallback to personality-based responses
+        return _generate_fallback_response(user_id, message, context)
         
     except Exception as e:
         current_app.logger.error(f"Error generating response: {str(e)}")
-        return "I'm having trouble thinking of a response right now. Could you try asking me something else?", False
+        return "I'm having trouble thinking of a response right now. Could you try asking me something else?"
+
+def _generate_gemini_response(user_id: str, message: str, context: Dict, chat_history: List[Dict] = None) -> str:
+    """Generate response using Gemini API."""
+    # Format the system prompt with context
+    system_prompt = SYSTEM_PROMPT.format(
+        profile_info=context.get('profile_info', 'No profile information available.'),
+        daily_plan=context.get('daily_plan', 'No plans for today.'),
+        memories=context.get('memories', 'No relevant memories found.'),
+        chat_history=context.get('chat_history', 'No recent conversation history.'),
+        current_time=context.get('current_time', datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'))
+    )
+    
+    # Prepare the conversation history for Gemini
+    conversation = [{"role": "user", "parts": [system_prompt]}]
+    
+    # Add chat history if available
+    if chat_history:
+        for msg in chat_history[-5:]:  # Limit to last 5 messages for context
+            role = "user" if msg.get("role") == "user" else "model"
+            content = msg.get("content", "").strip()
+            if content:
+                conversation.append({"role": role, "parts": [content]})
+    
+    # Add the current user message
+    conversation.append({"role": "user", "parts": [message]})
+    
+    # Generate response
+    response = model.generate_content(
+        conversation,
+        generation_config=GENERATION_CONFIG,
+        safety_settings=SAFETY_SETTINGS
+    )
+    
+    # Extract and clean the response text
+    response_text = ""
+    if response and hasattr(response, 'text'):
+        response_text = response.text.strip()
+    elif response and hasattr(response, 'candidates'):
+        # Handle response format for some Gemini models
+        for candidate in response.candidates:
+            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                response_text = ' '.join(part.text for part in candidate.content.parts if hasattr(part, 'text')).strip()
+    
+    return response_text
+
+def _generate_fallback_response(user_id: str, message: str, context: Dict) -> str:
+    """Generate fallback response using personality system when API fails."""
+    from .personality import personality
+    
+    # Get user profile for personalization
+    profile = UserProfile.get_by_user_id(user_id)
+    username = 'Friend'
+    if profile and 'personal_info' in profile:
+        username = profile['personal_info'].get('name', 'Friend')
+    
+    # Check if the user shared personal information
+    if any(phrase in message.lower() for phrase in ['my name is', "i'm ", "i am ", "i'm from", "i live in"]):
+        try:
+            UserProfile.add_memory(
+                user_id=user_id,
+                memory_type='personal_info',
+                content=f"User mentioned: {message}",
+                importance=5,
+                tags=['personal_info']
+            )
+        except Exception as e:
+            current_app.logger.error(f"Error saving memory: {str(e)}")
+        
+        return personality.get_style('supportive', 
+            f"Thanks for sharing that with me! I'll remember that. It's great to get to know you better!"
+        )
+    
+    # Generate contextual response based on message content
+    if any(word in message.lower() for word in ['task', 'todo', 'work', 'busy']):
+        return personality.get_style('motivational', 
+            f"I understand you're dealing with tasks, {username}. Let's tackle them one step at a time! What's the most important thing you need to focus on right now?"
+        )
+    elif any(word in message.lower() for word in ['tired', 'exhausted', 'stressed']):
+        return personality.get_style('supportive', 
+            f"It sounds like you're going through a tough time, {username}. Remember to take care of yourself. What's one small thing that might help you feel better right now?"
+        )
+    elif any(word in message.lower() for word in ['happy', 'great', 'awesome', 'excited']):
+        return personality.get_style('playful', 
+            f"That's wonderful to hear, {username}! I love your positive energy. What's making you feel so good today?"
+        )
+    elif '?' in message:
+        return personality.get_style('supportive', 
+            f"That's a great question, {username}. I wish I could give you a more detailed answer right now, but I'm having some technical difficulties. What are your thoughts on it?"
+        )
+    else:
+        return personality.get_style('supportive', 
+            f"I hear you, {username}. While I'm having some technical issues with my AI brain right now, I'm still here to listen. Tell me more about what's on your mind."
+        )
 
 def check_proactive_engagement(user_id: str, context: Dict) -> Optional[str]:
     """

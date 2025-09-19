@@ -17,11 +17,19 @@ def daily():
     
     if request.method == 'POST':
         # Get form data
-        tasks = request.form.getlist('tasks[]')
+        tasks_raw = request.form.getlist('tasks[]')
         mood = request.form.get('mood', '').strip()
         
-        # Filter out empty tasks
-        tasks = [task.strip() for task in tasks if task.strip()]
+        # Filter out empty tasks and format as dictionaries
+        tasks = []
+        for i, task in enumerate(tasks_raw):
+            if task.strip():
+                tasks.append({
+                    'id': str(ObjectId()),  # Generate unique ID
+                    'description': task.strip(),
+                    'completed': False,
+                    'created_at': datetime.utcnow().isoformat()
+                })
         
         # Prepare plan data
         plan_data = {
@@ -38,18 +46,23 @@ def daily():
         )
         
         # Save to vector memory
-        memory_text = f"Today's mood: {mood}. Tasks: {', '.join(tasks)}"
-        memory_system.save_memory(
-            user_id=user_id,
-            text=memory_text,
-            tags=['daily_plan', 'mood'],
-            metadata={
-                'type': 'daily_plan',
-                'date': today,
-                'mood': mood,
-                'task_count': len(tasks)
-            }
-        )
+        task_descriptions = [task['description'] for task in tasks]
+        memory_text = f"Today's mood: {mood}. Tasks: {', '.join(task_descriptions)}"
+        try:
+            memory_system.save_memory(
+                user_id=user_id,
+                text=memory_text,
+                tags=['daily_plan', 'mood'],
+                metadata={
+                    'type': 'daily_plan',
+                    'date': today,
+                    'mood': mood,
+                    'task_count': len(tasks)
+                }
+            )
+        except Exception as e:
+            current_app.logger.error(f"Error saving daily plan to memory: {str(e)}")
+            # Continue even if memory save fails
         
         return redirect(url_for('chat.chat'))
     

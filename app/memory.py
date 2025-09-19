@@ -71,7 +71,7 @@ class MemorySystem:
                 retry_delay *= 2  # Exponential backoff
         
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Get embeddings for a list of texts using Gemini."""
+        """Get embeddings for a list of texts using Gemini with fallback."""
         try:
             # Use the Gemini embedding model
             result = genai.embed_content(
@@ -82,8 +82,23 @@ class MemorySystem:
             return result['embedding'] if isinstance(result['embedding'][0], list) else [result['embedding']]
         except Exception as e:
             print(f"Error getting embeddings: {str(e)}")
-            # Return zero vectors if there's an error
-            return [[0.0] * 768 for _ in texts]
+            # Return simple hash-based vectors as fallback
+            return self._get_fallback_embeddings(texts)
+    
+    def _get_fallback_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Generate simple fallback embeddings based on text hashing."""
+        import hashlib
+        embeddings = []
+        for text in texts:
+            # Create a simple hash-based embedding
+            hash_obj = hashlib.md5(text.encode())
+            hash_bytes = hash_obj.digest()
+            # Convert to a 768-dimensional vector (repeated pattern)
+            vector = []
+            for i in range(768):
+                vector.append(float(hash_bytes[i % len(hash_bytes)]) / 255.0 - 0.5)
+            embeddings.append(vector)
+        return embeddings
     
     def _get_or_create_collection(self):
         """Get or create the ChromaDB collection for memory storage."""

@@ -24,11 +24,18 @@
 <div class="bg-white rounded-xl shadow-md overflow-hidden">
     <!-- Chat header -->
     <div class="bg-indigo-600 text-white p-4">
-        <div class="flex items-center">
-            <div class="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-xl font-bold">L</div>
-            <div class="ml-3">
-                <h2 class="text-lg font-semibold">Lumi</h2>
-                <p class="text-indigo-100 text-sm">Your AI Companion</p>
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <div class="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-xl font-bold">L</div>
+                <div class="ml-3">
+                    <h2 class="text-lg font-semibold">Lumi</h2>
+                    <p class="text-indigo-100 text-sm">Your AI Companion</p>
+                </div>
+            </div>
+            <!-- API Status Indicator -->
+            <div id="api-status" class="flex items-center text-sm">
+                <div class="w-2 h-2 rounded-full bg-green-400 mr-1 animate-pulse" id="status-dot"></div>
+                <span id="status-text">Connected</span>
             </div>
         </div>
     </div>
@@ -188,6 +195,34 @@
                 messageForm.dispatchEvent(new Event('submit'));
             }
         });
+        
+        // Check API status periodically
+        async function checkApiStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                
+                const statusDot = document.getElementById('status-dot');
+                const statusText = document.getElementById('status-text');
+                
+                if (status.api_status && (status.api_status.gemini === 'quota_exceeded' || status.api_status.embeddings === 'quota_exceeded')) {
+                    statusDot.className = 'w-2 h-2 rounded-full bg-yellow-400 mr-1';
+                    statusText.textContent = 'Limited Mode';
+                } else if (status.api_status && (status.api_status.gemini === 'working' || status.api_status.embeddings === 'working')) {
+                    statusDot.className = 'w-2 h-2 rounded-full bg-green-400 mr-1 animate-pulse';
+                    statusText.textContent = 'Connected';
+                } else {
+                    statusDot.className = 'w-2 h-2 rounded-full bg-red-400 mr-1';
+                    statusText.textContent = 'Offline';
+                }
+            } catch (error) {
+                console.error('Error checking API status:', error);
+            }
+        }
+        
+        // Check status initially and every 30 seconds
+        checkApiStatus();
+        setInterval(checkApiStatus, 30000);
         
         // Load initial chat history
         loadChatHistory();

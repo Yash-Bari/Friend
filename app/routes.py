@@ -111,12 +111,44 @@ def chat_history():
 @bp.route('/api/status', methods=['GET'])
 def status():
     """Check the status of the application and user session."""
+    import google.generativeai as genai
+    
     status = {
         'authenticated': 'user_id' in session,
         'has_profile': False,
         'has_today_plan': False,
-        'status': 'ok'
+        'status': 'ok',
+        'api_status': {
+            'gemini': 'unknown',
+            'embeddings': 'unknown'
+        }
     }
+    
+    # Test API availability
+    try:
+        # Try a simple embedding request
+        genai.embed_content(
+            model='models/embedding-001',
+            content=['test'],
+            task_type="retrieval_document"
+        )
+        status['api_status']['embeddings'] = 'working'
+    except Exception as e:
+        if '429' in str(e) or 'quota' in str(e).lower():
+            status['api_status']['embeddings'] = 'quota_exceeded'
+        else:
+            status['api_status']['embeddings'] = 'error'
+    
+    try:
+        # Try a simple generation request
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        model.generate_content('test', generation_config={'max_output_tokens': 1})
+        status['api_status']['gemini'] = 'working'
+    except Exception as e:
+        if '429' in str(e) or 'quota' in str(e).lower():
+            status['api_status']['gemini'] = 'quota_exceeded'
+        else:
+            status['api_status']['gemini'] = 'error'
     
     if 'user_id' in session:
         user_id = session['user_id']

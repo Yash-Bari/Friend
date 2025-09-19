@@ -240,9 +240,16 @@ class DailyPlan:
                     
                     for task in tasks:
                         try:
-                            # Skip if task is not a dictionary
-                            if not isinstance(task, dict):
-                                current_app.logger.warning(f"Skipping non-dict task: {task}")
+                            # Handle both string and dictionary tasks
+                            if isinstance(task, str):
+                                # Convert string tasks to dictionary format
+                                task = {
+                                    'description': task,
+                                    'completed': False,
+                                    'id': str(ObjectId())
+                                }
+                            elif not isinstance(task, dict):
+                                current_app.logger.debug(f"Skipping non-string/dict task: {task}")
                                 continue
                                 
                             # Check if task is incomplete (completed is either False or not set)
