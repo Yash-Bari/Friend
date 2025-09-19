@@ -33,9 +33,12 @@
                 </div>
             </div>
             <!-- API Status Indicator -->
-            <div id="api-status" class="flex items-center text-sm">
-                <div class="w-2 h-2 rounded-full bg-green-400 mr-1 animate-pulse" id="status-dot"></div>
-                <span id="status-text">Connected</span>
+            <div id="api-status" class="flex items-center text-sm cursor-pointer" onclick="checkApiStatus()" title="Click to refresh status">
+                <div class="w-2 h-2 rounded-full bg-gray-400 mr-1" id="status-dot"></div>
+                <span id="status-text">Checking...</span>
+                <svg class="w-3 h-3 ml-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
             </div>
         </div>
     </div>
@@ -164,6 +167,9 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             
             try {
+                // Check API status before sending
+                await checkStatusBeforeMessage();
+                
                 // Send message to server
                 const response = await fetch('/api/chat', {
                     method: 'POST',
@@ -173,7 +179,13 @@
                     body: JSON.stringify({ message })
                 });
                 
-                if (!response.ok) throw new Error('Failed to send message');
+                if (!response.ok) {
+                    // Update status immediately if API call fails
+                    if (response.status === 429) {
+                        checkApiStatus();
+                    }
+                    throw new Error('Failed to send message');
+                }
                 
                 const data = await response.json();
                 
@@ -181,10 +193,25 @@
                 typingIndicator.classList.add('hidden');
                 addMessage('assistant', data.response, data.timestamp);
                 
+                // If we got a successful response, update status
+                checkApiStatus();
+                
             } catch (error) {
                 console.error('Error sending message:', error);
                 typingIndicator.classList.add('hidden');
-                addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+                
+                // Check status after error to update indicator
+                checkApiStatus();
+                
+                // Show appropriate error message based on current status
+                const statusText = document.getElementById('status-text').textContent;
+                if (statusText === 'Limited Mode') {
+                    addMessage('assistant', 'I\'m currently in limited mode due to API quotas, but I can still chat with you using my personality system!');
+                } else if (statusText === 'Offline') {
+                    addMessage('assistant', 'I\'m having trouble connecting to my AI brain right now, but I\'m still here to listen and help as best I can.');
+                } else {
+                    addMessage('assistant', 'Sorry, I encountered an error. Please try again in a moment.');
+                }
             }
         });
         
@@ -196,36 +223,92 @@
             }
         });
         
-        // Check API status periodically
-        async function checkApiStatus() {
+        // Real-time API status checking
+        let statusCheckInterval;
+        let lastStatusCheck = 0;
+        
+        async function checkApiStatus(showLoading = false) {
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            
+            // Show loading state if requested
+            if (showLoading) {
+                statusDot.className = 'w-2 h-2 rounded-full bg-gray-400 mr-1 animate-spin';
+                statusText.textContent = 'Checking...';
+            }
+            
             try {
                 const response = await fetch('/api/status');
                 const status = await response.json();
+                lastStatusCheck = Date.now();
                 
-                const statusDot = document.getElementById('status-dot');
-                const statusText = document.getElementById('status-text');
-                
-                if (status.api_status && (status.api_status.gemini === 'quota_exceeded' || status.api_status.embeddings === 'quota_exceeded')) {
-                    statusDot.className = 'w-2 h-2 rounded-full bg-yellow-400 mr-1';
-                    statusText.textContent = 'Limited Mode';
-                } else if (status.api_status && (status.api_status.gemini === 'working' || status.api_status.embeddings === 'working')) {
-                    statusDot.className = 'w-2 h-2 rounded-full bg-green-400 mr-1 animate-pulse';
-                    statusText.textContent = 'Connected';
+                // Update status indicator based on API health
+                if (status.api_status) {
+                    const geminiStatus = status.api_status.gemini;
+                    const embeddingStatus = status.api_status.embeddings;
+                    
+                    if (geminiStatus === 'quota_exceeded' || embeddingStatus === 'quota_exceeded') {
+                        statusDot.className = 'w-2 h-2 rounded-full bg-yellow-400 mr-1 animate-pulse';
+                        statusText.textContent = 'Limited Mode';
+                        // Check more frequently when in limited mode
+                        setStatusCheckInterval(10000);
+                    } else if (geminiStatus === 'working' && embeddingStatus === 'working') {
+                        statusDot.className = 'w-2 h-2 rounded-full bg-green-400 mr-1 animate-pulse';
+                        statusText.textContent = 'Connected';
+                        // Normal check interval when working
+                        setStatusCheckInterval(30000);
+                    } else if (geminiStatus === 'working' || embeddingStatus === 'working') {
+                        statusDot.className = 'w-2 h-2 rounded-full bg-blue-400 mr-1 animate-pulse';
+                        statusText.textContent = 'Partial';
+                        // More frequent checks for partial connectivity
+                        setStatusCheckInterval(15000);
+                    } else {
+                        statusDot.className = 'w-2 h-2 rounded-full bg-red-400 mr-1';
+                        statusText.textContent = 'Offline';
+                        // Check frequently when offline to detect recovery
+                        setStatusCheckInterval(5000);
+                    }
                 } else {
                     statusDot.className = 'w-2 h-2 rounded-full bg-red-400 mr-1';
-                    statusText.textContent = 'Offline';
+                    statusText.textContent = 'Error';
+                    setStatusCheckInterval(5000);
                 }
+                
             } catch (error) {
                 console.error('Error checking API status:', error);
+                statusDot.className = 'w-2 h-2 rounded-full bg-red-400 mr-1';
+                statusText.textContent = 'Connection Error';
+                // Check frequently when there's a connection error
+                setStatusCheckInterval(5000);
             }
         }
         
-        // Check status initially and every 30 seconds
-        checkApiStatus();
-        setInterval(checkApiStatus, 30000);
+        function setStatusCheckInterval(interval) {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+            statusCheckInterval = setInterval(() => checkApiStatus(), interval);
+        }
+        
+        // Check status before sending messages
+        async function checkStatusBeforeMessage() {
+            // Only check if last check was more than 5 seconds ago
+            if (Date.now() - lastStatusCheck > 5000) {
+                await checkApiStatus();
+            }
+        }
+        
+        // Initialize status checking with immediate check
+        checkApiStatus(true);
+        setStatusCheckInterval(30000); // Start with 30-second intervals
         
         // Load initial chat history
         loadChatHistory();
+        
+        // Update status when window gains focus (user returns to tab)
+        window.addEventListener('focus', () => {
+            checkApiStatus();
+        });
     });
 </script>
 {% endblock %}
